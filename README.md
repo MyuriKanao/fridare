@@ -15,7 +15,7 @@ Attach once, explore forever. No scripts to restart, no context lost.
 ## Features
 
 - **Persistent sessions** — attach once, run unlimited commands
-- **21 MCP tools** — full Frida lifecycle from any MCP-compatible client
+- **22 MCP tools** — full Frida lifecycle from any MCP-compatible client
 - **r0capture integration** — universal SSL/HTTP traffic capture with PCAP export
 - **SSL unpinning** — OkHttp / Conscrypt / WebView / universal bypass
 - **Certificate dump** — auto-export client certs as P12
@@ -23,10 +23,62 @@ Attach once, explore forever. No scripts to restart, no context lost.
 
 ## Install
 
+Requires `frida` and `frida-tools` to be available in your active Python environment.
+
+### From GitHub
+
 ```bash
-# Requires: frida + frida-tools already installed (any version)
+pip install git+https://github.com/MyuriKanao/fridare.git
+```
+
+Or install it as a standalone tool:
+
+```bash
+uv tool install git+https://github.com/MyuriKanao/fridare.git
+```
+
+### For local development
+
+```bash
 pip install -e .
 ```
+
+## Publishing
+
+For maintainers, build and publish the package with standard Python packaging tools:
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+python -m twine upload dist/*
+```
+
+If you want to test the release flow first, upload to TestPyPI before publishing to PyPI.
+
+### GitHub Actions release flow
+
+This repository also includes `.github/workflows/pypi-publish.yml`:
+
+- pull requests / pushes to `main` build the package and run `twine check`
+- pushes of tags matching `v*` publish to PyPI automatically
+
+Typical release flow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Before the first automated release, configure a **PyPI Trusted Publisher** for:
+
+- PyPI project: `fridare`
+- GitHub owner: `MyuriKanao`
+- Repository: `fridare`
+- Workflow file: `.github/workflows/pypi-publish.yml`
+- Environment: `pypi`
+
+If the PyPI project does not exist yet, create a **pending publisher** first and let the first tagged release create it.
 
 ## Configure
 
@@ -178,12 +230,13 @@ No arguments, no environment variables required. Just ensure `fridare` is on you
 | `frida_attach` | Attach to process by name/PID (persists) |
 | `frida_spawn` | Cold-start app + attach |
 | `frida_detach` | Detach and cleanup |
+| `frida_status` | Show session state (alive, PID, scripts, PCAP) |
 
 ### Execution
 
 | Tool | Description |
 |------|-------------|
-| `frida_exec` | Run arbitrary JavaScript in target |
+| `frida_exec` | Run arbitrary JS (supports `keep_previous` and `wait`) |
 | `frida_rpc` | Call RPC exports on loaded script |
 | `frida_load_script` | Load JS script from file |
 | `frida_messages` | Read accumulated `send()` messages |
@@ -193,7 +246,7 @@ No arguments, no environment variables required. Just ensure `fridare` is on you
 | Tool | Description |
 |------|-------------|
 | `frida_list_classes` | Enumerate loaded classes (with filter) |
-| `frida_list_methods` | List methods of a class |
+| `frida_list_methods` | List methods (supports `include_inherited`) |
 | `frida_list_fields` | List fields of a class |
 | `frida_hook` | Hook method — args, retval, optional backtrace |
 
@@ -242,7 +295,7 @@ No arguments, no environment variables required. Just ensure `fridare` is on you
 
 ```
 fridare/
-├── server.py          MCP tool definitions (21 tools)
+├── server.py          MCP tool definitions (22 tools)
 ├── session.py         Device/process/session lifecycle + PCAP writer
 ├── builtins.py        Built-in ops (class enum, hooking, SSL capture)
 └── scripts/
@@ -272,7 +325,7 @@ fridare/
 ## 功能
 
 - **持久会话** — attach 一次，无限执行
-- **21 个 MCP 工具** — 在任何 MCP 兼容客户端中完整操控 Frida
+- **22 个 MCP 工具** — 在任何 MCP 兼容客户端中完整操控 Frida
 - **r0capture 集成** — 通杀 SSL/HTTP 抓包 + PCAP 导出
 - **SSL Pinning 绕过** — OkHttp / Conscrypt / WebView 通杀
 - **证书导出** — 自动 dump 客户端证书为 P12
@@ -280,9 +333,62 @@ fridare/
 
 ## 安装
 
+需要先在当前 Python 环境中准备好 `frida` 和 `frida-tools`。
+
+### 从 GitHub 安装
+
+```bash
+pip install git+https://github.com/MyuriKanao/fridare.git
+```
+
+或者安装成独立命令行工具：
+
+```bash
+uv tool install git+https://github.com/MyuriKanao/fridare.git
+```
+
+### 本地开发安装
+
 ```bash
 pip install -e .
 ```
+
+## 发布
+
+维护者可使用标准 Python 打包流程发布：
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+python -m twine upload dist/*
+```
+
+如果想先验证发布流程，建议先上传到 TestPyPI，再发布到正式 PyPI。
+
+### GitHub Actions 自动发布
+
+仓库已包含 `.github/workflows/pypi-publish.yml`：
+
+- PR / 推送到 `main` 时自动构建并执行 `twine check`
+- 推送符合 `v*` 的 tag 时自动发布到 PyPI
+
+典型发布流程：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+首次自动发布前，需要在 PyPI 中配置 **Trusted Publisher**：
+
+- PyPI 项目名：`fridare`
+- GitHub Owner：`MyuriKanao`
+- 仓库名：`fridare`
+- Workflow 文件：`.github/workflows/pypi-publish.yml`
+- Environment：`pypi`
+
+如果 PyPI 项目还不存在，先创建 **pending publisher**，再用第一次带 tag 的发布自动创建项目。
 
 ## 配置
 

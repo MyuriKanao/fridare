@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "Myuri_Kanao" },
+    { name = "Myuri_Kanao", email = "w.victorique@gmail.com" },
 ]
 keywords = ["frida", "mcp", "android", "reverse-engineering", "security"]
 classifiers = [
@@ -35,7 +35,11 @@ fridare = "fridare.server:main"
 
 [project.urls]
 Repository = "https://github.com/MyuriKanao/fridare"
+Issues = "https://github.com/MyuriKanao/fridare/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fridare"]
