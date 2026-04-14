@@ -19,6 +19,8 @@ class SessionState:
     device: frida.core.Device | None = None
     session: frida.core.Session | None = None
     script: frida.core.Script | None = None
+    scripts: list[frida.core.Script] = field(default_factory=list)
+    _max_scripts: int = 50
     pid: int | None = None
     package: str | None = None
     messages: list[dict] = field(default_factory=list)
@@ -43,19 +45,33 @@ class SessionState:
         if len(self.messages) > self._max_messages:
             self.messages = self.messages[-self._max_messages:]
 
-    def clear(self):
-        if self.script:
+    @property
+    def is_alive(self) -> bool:
+        """Check if session is still valid."""
+        if not self.session:
+            return False
+        try:
+            return not self.session.is_detached
+        except Exception:
+            return False
+
+    def _unload_all_scripts(self):
+        for s in self.scripts:
             try:
-                self.script.unload()
+                s.unload()
             except Exception:
                 pass
+        self.scripts.clear()
+        self.script = None
+
+    def clear(self):
+        self._unload_all_scripts()
         if self.session:
             try:
                 self.session.detach()
             except Exception:
                 pass
         self.stop_pcap()
-        self.script = None
         self.session = None
         self.pid = None
         self.package = None
@@ -80,6 +96,7 @@ class SessionState:
             except Exception:
                 pass
             self.pcap_file = None
+            self.pcap_path = None
 
 
 # ── PCAP writer ────────────────────────────────────────
@@ -223,22 +240,40 @@ def detach() -> dict:
 
 # ── Script execution ────────────────────────────────────
 
-def exec_js(code: str) -> Any:
+def exec_js(code: str, keep_previous: bool = False, wait: float = 0.2) -> Any:
+    """Execute JavaScript in the target process.
+
+    Args:
+        code: Frida JavaScript to execute.
+        keep_previous: If True, don't unload the previous script (avoids access violations
+                       when previous hooks are still active). Default False for backwards compat.
+        wait: Seconds to wait for synchronous messages before returning. Default 0.2.
+    """
     if not _state.session:
         raise RuntimeError("Not attached. Call frida_attach() or frida_spawn() first.")
-    if _state.script:
-        try:
-            _state.script.unload()
-        except Exception:
-            pass
-        _state.script = None
-    _state.messages.clear()
+    if not _state.is_alive:
+        raise RuntimeError("Session is dead (app crashed or detached). Re-attach needed.")
+
+    if not keep_previous:
+        _state._unload_all_scripts()
+        _state.messages.clear()
+
+    start_index = len(_state.messages)
     script = _state.session.create_script(code)
     script.on("message", _on_message)
     script.load()
     _state.script = script
-    time.sleep(0.5)
-    return {"status": "ok", "messages": list(_state.messages)}
+    _state.scripts.append(script)
+    # Evict oldest scripts when limit exceeded
+    while len(_state.scripts) > _state._max_scripts:
+        old = _state.scripts.pop(0)
+        try:
+            old.unload()
+        except Exception:
+            pass
+    time.sleep(wait)
+    new_messages = list(_state.messages[start_index:])
+    return {"status": "ok", "messages": new_messages}
 
 
 def rpc_call(method: str, args: list | None = None) -> Any:
@@ -262,6 +297,20 @@ def get_messages(clear: bool = False) -> list[dict]:
     if clear:
         _state.messages.clear()
     return msgs
+
+
+def status() -> dict:
+    """Return current session state."""
+    return {
+        "attached": _state.session is not None,
+        "alive": _state.is_alive,
+        "pid": _state.pid,
+        "package": _state.package,
+        "scripts_loaded": len(_state.scripts),
+        "messages_buffered": len(_state.messages),
+        "pcap_active": _state.pcap_file is not None,
+        "pcap_path": _state.pcap_path,
+    }
 
 
 # ── PCAP control ────────────────────────────────────────

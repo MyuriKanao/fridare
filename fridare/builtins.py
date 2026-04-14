@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
+from importlib.resources import files
 import re
 import time
-from pathlib import Path
 from typing import Any
 
-from fridare.session import get_state, exec_js, load_script, get_messages
-
-SCRIPTS_DIR = Path(__file__).parent / "scripts"
+from fridare.session import get_state, exec_js, get_messages
 
 # Java identifier: letters, digits, $, _ (dots for FQN)
 _JAVA_IDENT_RE = re.compile(r"^[\w.$]+$")
@@ -42,6 +40,12 @@ def _extract_payload(messages: list[dict], payload_type: str) -> Any:
     return None
 
 
+def _load_builtin_script(script_name: str, wait: float = 0.2) -> dict:
+    """Load a bundled Frida JavaScript resource from the installed package."""
+    code = files("fridare").joinpath("scripts", script_name).read_text(encoding="utf-8")
+    return exec_js(code, wait=wait)
+
+
 # ── Java introspection ──────────────────────────────────
 
 
@@ -68,9 +72,14 @@ def list_classes(filter: str = "") -> list[str]:
     return _extract_payload(result.get("messages", []), "classes") or []
 
 
-def list_methods(class_name: str) -> list[str]:
-    """List all declared methods of a Java class."""
+def list_methods(class_name: str, include_inherited: bool = False) -> list[str]:
+    """List methods of a Java class. Set include_inherited=True to walk superclass chain.
+
+    When walking inherited methods, java.lang.Object methods are excluded and
+    duplicates from overridden methods are removed.
+    """
     _validate_java_name(class_name, "class name")
+    walk = "true" if include_inherited else "false"
     code = f"""
     Java.perform(function() {{
         var found = false;
@@ -80,11 +89,16 @@ def list_methods(class_name: str) -> list[str]:
                 try {{
                     var clz = Java.ClassFactory.get(loader).use("{class_name}");
                     found = true;
-                    var methods = clz.class.getDeclaredMethods();
                     var result = [];
-                    for (var i = 0; i < methods.length; i++) {{
-                        result.push(methods[i].toString());
-                    }}
+                    var seen = {{}};
+                    var cls = clz.class;
+                    do {{
+                        var methods = cls.getDeclaredMethods();
+                        for (var i = 0; i < methods.length; i++) {{
+                            var s = methods[i].toString();
+                            if (!seen[s]) {{ seen[s] = true; result.push(s); }}
+                        }}
+                    }} while ({walk} && (cls = cls.getSuperclass()) && cls.getName() !== 'java.lang.Object');
                     send({{type: 'methods', data: result}});
                 }} catch(e) {{}}
             }},
@@ -190,7 +204,7 @@ def hook_method(class_name: str, method_name: str, backtrace: bool = False) -> d
 def ssl_capture(duration: int = 10) -> list[dict]:
     """Capture SSL + HTTP traffic for N seconds."""
     _require_session()
-    load_script(str(SCRIPTS_DIR / "ssl_capture.js"))
+    _load_builtin_script("ssl_capture.js", wait=0)
     time.sleep(duration)
     return get_messages()
 
@@ -198,13 +212,13 @@ def ssl_capture(duration: int = 10) -> list[dict]:
 def cert_dump() -> dict:
     """Dump client certificates and detect SSL pinning."""
     _require_session()
-    return load_script(str(SCRIPTS_DIR / "cert_dump.js"))
+    return _load_builtin_script("cert_dump.js")
 
 
 def ssl_unpin() -> dict:
     """Bypass SSL certificate pinning."""
     _require_session()
-    return load_script(str(SCRIPTS_DIR / "ssl_unpin.js"))
+    return _load_builtin_script("ssl_unpin.js")
 
 
 # ── Native ─────────────────────────────────────────────

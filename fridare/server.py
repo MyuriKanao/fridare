@@ -112,20 +112,32 @@ def frida_detach() -> dict:
         return _error(e)
 
 
+@mcp.tool()
+def frida_status() -> dict:
+    """Show current session state: attached, alive, PID, scripts loaded, messages buffered, PCAP status."""
+    try:
+        return session.status()
+    except Exception as e:
+        return _error(e)
+
+
 # ── Code execution ──────────────────────────────────────
 
 
 @mcp.tool()
 def frida_exec(
     js_code: Annotated[str, Field(description="Frida JavaScript code to execute. Use send() to emit results.")],
+    keep_previous: Annotated[bool, Field(description="Keep previous script alive (avoids crash from dangling hooks). Default false.")] = False,
+    wait: Annotated[float, Field(description="Seconds to wait for messages before returning. Default 0.2. Increase for async callbacks.", ge=0, le=30)] = 0.2,
 ) -> dict:
     """Execute arbitrary JavaScript in the attached process.
 
-    The script runs inside the target process via Frida. Use `send(payload)` to emit
-    results, then read them from the returned messages or via frida_messages().
+    Use `send(payload)` to emit results. Set keep_previous=true when you need hooks
+    from a previous frida_exec to stay active (prevents access violations).
+    Increase wait for scripts with async callbacks (e.g. setTimeout).
     """
     try:
-        return session.exec_js(js_code)
+        return session.exec_js(js_code, keep_previous=keep_previous, wait=wait)
     except Exception as e:
         return _error(e)
 
@@ -194,10 +206,11 @@ def frida_list_classes(
 @mcp.tool()
 def frida_list_methods(
     class_name: Annotated[str, Field(description="Fully qualified Java class name (e.g. 'com.example.MyClass').")],
+    include_inherited: Annotated[bool, Field(description="Walk superclass chain to include inherited methods. Useful for classes with 0 own methods.")] = False,
 ) -> dict:
-    """List all declared methods of a Java class."""
+    """List methods of a Java class. Set include_inherited=true for classes that inherit all methods."""
     try:
-        methods = builtins.list_methods(class_name)
+        methods = builtins.list_methods(class_name, include_inherited=include_inherited)
         return {"class": class_name, "count": len(methods), "methods": methods}
     except Exception as e:
         return _error(e)
